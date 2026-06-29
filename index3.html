@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>spin.stx</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --bg:#000; --text:#fff; --muted:#555; --mono:'Courier New',Courier,monospace; }
+body { background:var(--bg); color:var(--text); font-family:var(--mono); font-size:12px; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+#topbar { display:flex; align-items:flex-start; gap:0; padding:10px 16px; border-bottom:1px solid #1a1a1a; flex-shrink:0; position:relative; z-index:10; flex-wrap:wrap; }
+.tb-group { display:flex; flex-direction:column; gap:6px; padding-right:24px; border-right:1px solid #1a1a1a; margin-right:24px; margin-bottom:4px; }
+.tb-group:last-child { border-right:none; margin-right:0; }
+.tb-label { color:var(--text); font-size:11px; }
+.tb-sub { color:var(--muted); font-size:11px; cursor:pointer; user-select:none; white-space:nowrap; }
+.tb-sub:hover { color:var(--text); }
+.tb-sub.active { color:var(--text); }
+.tb-range { display:flex; align-items:center; gap:8px; }
+input[type=range] { -webkit-appearance:none; width:120px; height:1px; background:#333; cursor:pointer; outline:none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; border:1px solid #666; background:#000; cursor:pointer; }
+input[type=range]::-webkit-slider-thumb:hover { border-color:#fff; }
+.tb-val { color:var(--muted); min-width:38px; font-size:11px; }
+
+#sidebar { position:absolute; left:0; top:56px; bottom:0; width:72px; padding:14px 0 14px 14px; display:flex; flex-direction:column; gap:12px; z-index:10; pointer-events:none; }
+.brand { color:var(--text); font-size:11px; pointer-events:all; }
+.sb-item { color:var(--muted); font-size:11px; cursor:pointer; pointer-events:all; user-select:none; }
+.sb-item:hover { color:var(--text); }
+.sb-item.active { color:var(--text); }
+
+#canvas-wrap { flex:1; position:relative; overflow:hidden; cursor:default; }
+#three-canvas { display:none; position:absolute; inset:0; width:100%; height:100%; }
+#img-view { display:none; position:absolute; inset:0; align-items:center; justify-content:center; perspective:800px; }
+#preview-img { max-width:50%; max-height:70%; }
+#empty-hint { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); gap:8px; pointer-events:none; }
+
+.panel { display:none; position:absolute; bottom:20px; left:72px; z-index:20; background:#080808; border:1px solid #222; padding:14px; flex-direction:column; gap:10px; min-width:260px; }
+.panel.open { display:flex; }
+.cp-label { font-size:10px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:2px; }
+.swatch-row { display:flex; gap:5px; flex-wrap:wrap; }
+.swatch { width:22px; height:22px; cursor:pointer; border:1px solid transparent; }
+.swatch:hover,.swatch.active { border-color:#fff; }
+#custom-color { width:26px; height:26px; border:1px solid #333; background:none; cursor:pointer; padding:1px; }
+.cam-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.cam-row label { font-size:11px; color:var(--muted); min-width:60px; }
+.cam-section { font-size:10px; color:#333; text-transform:uppercase; letter-spacing:.08em; margin-top:4px; border-top:1px solid #1a1a1a; padding-top:8px; }
+
+#file-input { display:none; }
+#drag-overlay { display:none; position:absolute; inset:0; border:1px solid #333; z-index:30; align-items:center; justify-content:center; font-size:11px; color:var(--muted); letter-spacing:.1em; pointer-events:none; }
+#drag-overlay.show { display:flex; }
+.hint-tip { font-size:10px; color:#2a2a2a; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="tb-group">
+    <span class="tb-label">spin.stx</span>
+    <span class="tb-sub" id="btn-load">+ load</span>
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">speed</span>
+    <div class="tb-range">
+      <input type="range" id="speed" min="0.02" max="5" step="0.02" value="0.4">
+      <span class="tb-val" id="speed-val">0.40</span>
+    </div>
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">direction</span>
+    <div class="tb-range" style="gap:14px">
+      <span class="tb-sub active" data-dir="1">cw</span>
+      <span class="tb-sub" data-dir="-1">ccw</span>
+    </div>
+  </div>
+  <div class="tb-group" id="axis-group" style="display:none">
+    <span class="tb-label">axis</span>
+    <div class="tb-range" style="gap:14px">
+      <span class="tb-sub" data-axis="x">X</span>
+      <span class="tb-sub active" data-axis="y">Y</span>
+      <span class="tb-sub" data-axis="z">Z</span>
+    </div>
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">zoom</span>
+    <div class="tb-range">
+      <input type="range" id="zoom" min="0.5" max="20" step="0.1" value="4">
+      <span class="tb-val" id="zoom-val">4.0</span>
+    </div>
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">animate</span>
+    <span class="tb-sub active" id="btn-play">pause</span>
+  </div>
+</div>
+
+<div id="sidebar">
+  <span class="brand">spin.stx</span>
+  <span class="sb-item" id="sb-load">load</span>
+  <span class="sb-item" id="sb-color">color</span>
+  <span class="sb-item" id="sb-camera">camera</span>
+  <span class="sb-item" id="sb-reset">reset</span>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="three-canvas"></canvas>
+  <div id="img-view"><img id="preview-img" src="" alt=""></div>
+  <div id="empty-hint">
+    <span style="font-size:11px;letter-spacing:.1em">[ spin.stx ]</span>
+    <span style="font-size:11px">wgraj PNG, GLB lub OBJ</span>
+    <span style="font-size:10px;margin-top:2px">przeciagnij plik tutaj</span>
+  </div>
+  <div id="drag-overlay">upusc plik</div>
+</div>
+
+<!-- COLOR PANEL -->
+<div class="panel" id="color-panel">
+  <span class="cp-label">background</span>
+  <div class="swatch-row" id="swatch-row"></div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <input type="color" id="custom-color" value="#000000">
+    <span style="font-size:10px;color:var(--muted)">custom rgb</span>
+  </div>
+</div>
+
+<!-- CAMERA PANEL -->
+<div class="panel" id="cam-panel">
+  <span class="cp-label">camera</span>
+
+  <span class="cam-section">orbit</span>
+  <div class="cam-row">
+    <label>azimuth</label>
+    <input type="range" id="cam-azim" min="-180" max="180" step="1" value="0">
+    <span class="tb-val" id="cam-azim-val">0deg</span>
+  </div>
+  <div class="cam-row">
+    <label>elevation</label>
+    <input type="range" id="cam-elev" min="-89" max="89" step="1" value="10">
+    <span class="tb-val" id="cam-elev-val">10deg</span>
+  </div>
+  <div class="cam-row">
+    <label>distance</label>
+    <input type="range" id="cam-dist" min="0.5" max="20" step="0.1" value="4">
+    <span class="tb-val" id="cam-dist-val">4.0</span>
+  </div>
+  <div class="cam-row">
+    <label>fov</label>
+    <input type="range" id="cam-fov" min="10" max="120" step="1" value="45">
+    <span class="tb-val" id="cam-fov-val">45deg</span>
+  </div>
+
+  <span class="cam-section">target offset (XYZ)</span>
+  <div class="cam-row">
+    <label>X</label>
+    <input type="range" id="cam-offx" min="-5" max="5" step="0.05" value="0">
+    <span class="tb-val" id="cam-offx-val">0.00</span>
+  </div>
+  <div class="cam-row">
+    <label>Y</label>
+    <input type="range" id="cam-offy" min="-5" max="5" step="0.05" value="0">
+    <span class="tb-val" id="cam-offy-val">0.00</span>
+  </div>
+  <div class="cam-row">
+    <label>Z</label>
+    <input type="range" id="cam-offz" min="-5" max="5" step="0.05" value="0">
+    <span class="tb-val" id="cam-offz-val">0.00</span>
+  </div>
+
+  <span class="hint-tip">LMB drag = orbit &nbsp;|&nbsp; RMB drag = pan &nbsp;|&nbsp; scroll = zoom</span>
+</div>
+
+<input type="file" id="file-input" accept=".png,.jpg,.jpeg,.obj,.glb,.gltf">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script>
+const S = {
+  speed:0.4, direction:1, axis:'y', bgColor:'#000000', playing:true, mode:'none',
+  camElev:10, camAzim:0, camDist:4, camFov:45,
+  camOffX:0, camOffY:0, camOffZ:0
+};
+
+const cvs = document.getElementById('three-canvas');
+const wrap = document.getElementById('canvas-wrap');
+let renderer, scene, camera, mesh3d, animId, imgAnimId;
+let lastTs=null, imgLastTs=null, imgAngle=0;
+
+function initThree() {
+  if (renderer) return;
+  renderer = new THREE.WebGLRenderer({canvas:cvs, antialias:true});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(S.camFov, wrap.clientWidth/wrap.clientHeight, 0.01, 1000);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const d1 = new THREE.DirectionalLight(0xffffff, 1.4); d1.position.set(5,8,5); scene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x4466ff, 0.3); d2.position.set(-4,-2,-6); scene.add(d2);
+  resize(); window.addEventListener('resize', resize);
+}
+
+function updateCamera() {
+  if (!camera) return;
+  camera.fov = S.camFov; camera.updateProjectionMatrix();
+  const er = S.camElev * Math.PI / 180;
+  const ar = S.camAzim * Math.PI / 180;
+  const tx = S.camOffX, ty = S.camOffY, tz = S.camOffZ;
+  camera.position.set(
+    tx + Math.sin(ar) * Math.cos(er) * S.camDist,
+    ty + Math.sin(er) * S.camDist,
+    tz + Math.cos(ar) * Math.cos(er) * S.camDist
+  );
+  camera.lookAt(tx, ty, tz);
+}
+
+function resize() {
+  if (!renderer) return;
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  if (camera) { camera.aspect = wrap.clientWidth/wrap.clientHeight; camera.updateProjectionMatrix(); }
+}
+
+function animate3d(ts) {
+  animId = requestAnimationFrame(animate3d);
+  if (!mesh3d) return;
+  if (S.playing) { const dt = lastTs?(ts-lastTs)/1000:0; lastTs=ts; mesh3d.rotation[S.axis] += S.speed*S.direction*Math.PI*2*dt; } else lastTs=null;
+  renderer.render(scene, camera);
+}
+
+function animate2d(ts) {
+  imgAnimId = requestAnimationFrame(animate2d);
+  const img = document.getElementById('preview-img');
+  if (S.playing) { const dt = imgLastTs?(ts-imgLastTs)/1000:0; imgLastTs=ts; imgAngle += S.speed*S.direction*360*dt; img.style.transform='rotateY('+imgAngle+'deg)'; } else imgLastTs=null;
+}
+
+function stopAll() {
+  if (animId) cancelAnimationFrame(animId);
+  if (imgAnimId) cancelAnimationFrame(imgAnimId);
+  animId=imgAnimId=null; lastTs=imgLastTs=null;
+}
+
+function loadFile(f) {
+  const n = f.name.toLowerCase();
+  if (n.match(/\.(png|jpe?g)$/)) load2D(f);
+  else if (n.match(/\.(glb|gltf)$/)) load3D(f,'gltf');
+  else if (n.endsWith('.obj')) load3D(f,'obj');
+}
+
+function load2D(f) {
+  stopAll(); S.mode='2d';
+  cvs.style.display='none';
+  document.getElementById('empty-hint').style.display='none';
+  document.getElementById('axis-group').style.display='none';
+  const iv=document.getElementById('img-view'); iv.style.display='flex'; iv.style.background=S.bgColor;
+  document.getElementById('preview-img').src=URL.createObjectURL(f);
+  imgAngle=0; imgAnimId=requestAnimationFrame(animate2d);
+}
+
+function load3D(f,type) {
+  stopAll(); S.mode='3d';
+  document.getElementById('img-view').style.display='none';
+  document.getElementById('empty-hint').style.display='none';
+  document.getElementById('axis-group').style.display='flex';
+  cvs.style.display='block';
+  initThree(); renderer.setClearColor(S.bgColor,1);
+  if (mesh3d) { scene.remove(mesh3d); mesh3d=null; }
+  const url=URL.createObjectURL(f);
+  const onLoad = obj => {
+    mesh3d = obj.scene||obj;
+    mesh3d.traverse(c=>{ if(c.isMesh&&!c.material) c.material=new THREE.MeshStandardMaterial({color:0xaaaacc}); });
+    const box=new THREE.Box3().setFromObject(mesh3d), sz=box.getSize(new THREE.Vector3()), ctr=box.getCenter(new THREE.Vector3());
+    const sc=2.2/Math.max(sz.x,sz.y,sz.z); mesh3d.scale.setScalar(sc); mesh3d.position.sub(ctr.multiplyScalar(sc));
+    scene.add(mesh3d); updateCamera(); animId=requestAnimationFrame(animate3d);
+  };
+  if (type==='gltf') new THREE.GLTFLoader().load(url,onLoad);
+  else new THREE.OBJLoader().load(url,onLoad);
+}
+
+function setBg(hex) {
+  S.bgColor=hex; document.getElementById('custom-color').value=hex;
+  wrap.style.background=hex; document.getElementById('img-view').style.background=hex;
+  if(renderer) renderer.setClearColor(hex,1);
+  document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('active',s.dataset.color===hex));
+}
+
+const SWATCHES=['#000000','#0a0a0a','#0d0d1a','#001a0d','#1a0000','#0a0a1f','#1a1a00','#ffffff','#0f1923','#1a0f23','#001f1a','#23000f'];
+const sr=document.getElementById('swatch-row');
+SWATCHES.forEach(c=>{ const s=document.createElement('div'); s.className='swatch'+(c===S.bgColor?' active':''); s.style.background=c; s.dataset.color=c; s.addEventListener('click',()=>setBg(c)); sr.appendChild(s); });
+document.getElementById('custom-color').addEventListener('input',e=>setBg(e.target.value));
+setBg(S.bgColor);
+
+// ── Mouse orbit (LMB) + pan (RMB) ─────────────────────────────────────────
+let isDrag=false, dragBtn=0;
+let dragSX=0, dragSY=0, azimStart=0, elevStart=0, offXStart=0, offYStart=0;
+
+wrap.addEventListener('mousedown',e=>{
+  if(S.mode!=='3d') return; e.preventDefault();
+  isDrag=true; dragBtn=e.button;
+  dragSX=e.clientX; dragSY=e.clientY;
+  azimStart=S.camAzim; elevStart=S.camElev;
+  offXStart=S.camOffX; offYStart=S.camOffY;
+  wrap.style.cursor=e.button===2?'move':'grabbing';
+});
+
+window.addEventListener('mousemove',e=>{
+  if(!isDrag) return;
+  const dx=e.clientX-dragSX, dy=e.clientY-dragSY;
+  if(dragBtn===2) {
+    const panSpeed=S.camDist*0.002;
+    const ar=S.camAzim*Math.PI/180;
+    S.camOffX=offXStart-(Math.cos(ar)*dx-Math.sin(ar)*0)*panSpeed;
+    S.camOffY=offYStart+dy*panSpeed;
+  } else {
+    S.camAzim=azimStart-dx*0.4;
+    S.camElev=Math.max(-89,Math.min(89,elevStart-dy*0.3));
+  }
+  syncCamUI(); updateCamera();
+});
+
+window.addEventListener('mouseup',()=>{ isDrag=false; wrap.style.cursor='default'; });
+wrap.addEventListener('contextmenu',e=>e.preventDefault());
+
+wrap.addEventListener('wheel',e=>{
+  if(S.mode!=='3d') return; e.preventDefault();
+  S.camDist=Math.max(0.5,Math.min(20,S.camDist+e.deltaY*0.006));
+  document.getElementById('cam-dist').value=S.camDist;
+  document.getElementById('cam-dist-val').textContent=S.camDist.toFixed(1);
+  document.getElementById('zoom').value=S.camDist;
+  document.getElementById('zoom-val').textContent=S.camDist.toFixed(1);
+  updateCamera();
+},{passive:false});
+
+function syncCamUI() {
+  document.getElementById('cam-elev').value=S.camElev;
+  document.getElementById('cam-elev-val').textContent=Math.round(S.camElev)+'deg';
+  document.getElementById('cam-azim').value=((S.camAzim%360)+360)%360>180?((S.camAzim%360)+360)%360-360:((S.camAzim%360)+360)%360;
+  document.getElementById('cam-azim-val').textContent=Math.round(S.camAzim%360)+'deg';
+  document.getElementById('cam-offx').value=S.camOffX;
+  document.getElementById('cam-offx-val').textContent=S.camOffX.toFixed(2);
+  document.getElementById('cam-offy').value=S.camOffY;
+  document.getElementById('cam-offy-val').textContent=S.camOffY.toFixed(2);
+  document.getElementById('cam-offz').value=S.camOffZ;
+  document.getElementById('cam-offz-val').textContent=S.camOffZ.toFixed(2);
+}
+
+// ── Sliders ────────────────────────────────────────────────────────────────
+document.getElementById('speed').addEventListener('input',e=>{ S.speed=parseFloat(e.target.value); document.getElementById('speed-val').textContent=S.speed.toFixed(2); });
+document.getElementById('zoom').addEventListener('input',e=>{ S.camDist=parseFloat(e.target.value); document.getElementById('zoom-val').textContent=S.camDist.toFixed(1); document.getElementById('cam-dist').value=S.camDist; document.getElementById('cam-dist-val').textContent=S.camDist.toFixed(1); updateCamera(); });
+document.getElementById('cam-elev').addEventListener('input',e=>{ S.camElev=parseFloat(e.target.value); document.getElementById('cam-elev-val').textContent=Math.round(S.camElev)+'deg'; updateCamera(); });
+document.getElementById('cam-azim').addEventListener('input',e=>{ S.camAzim=parseFloat(e.target.value); document.getElementById('cam-azim-val').textContent=Math.round(S.camAzim)+'deg'; updateCamera(); });
+document.getElementById('cam-dist').addEventListener('input',e=>{ S.camDist=parseFloat(e.target.value); document.getElementById('cam-dist-val').textContent=S.camDist.toFixed(1); document.getElementById('zoom').value=S.camDist; document.getElementById('zoom-val').textContent=S.camDist.toFixed(1); updateCamera(); });
+document.getElementById('cam-fov').addEventListener('input',e=>{ S.camFov=parseInt(e.target.value); document.getElementById('cam-fov-val').textContent=S.camFov+'deg'; updateCamera(); });
+document.getElementById('cam-offx').addEventListener('input',e=>{ S.camOffX=parseFloat(e.target.value); document.getElementById('cam-offx-val').textContent=S.camOffX.toFixed(2); updateCamera(); });
+document.getElementById('cam-offy').addEventListener('input',e=>{ S.camOffY=parseFloat(e.target.value); document.getElementById('cam-offy-val').textContent=S.camOffY.toFixed(2); updateCamera(); });
+document.getElementById('cam-offz').addEventListener('input',e=>{ S.camOffZ=parseFloat(e.target.value); document.getElementById('cam-offz-val').textContent=S.camOffZ.toFixed(2); updateCamera(); });
+
+document.querySelectorAll('[data-dir]').forEach(b=>b.addEventListener('click',()=>{ S.direction=parseInt(b.dataset.dir); document.querySelectorAll('[data-dir]').forEach(x=>x.classList.toggle('active',x===b)); }));
+document.querySelectorAll('[data-axis]').forEach(b=>b.addEventListener('click',()=>{ S.axis=b.dataset.axis; document.querySelectorAll('[data-axis]').forEach(x=>x.classList.toggle('active',x===b)); }));
+
+document.getElementById('btn-play').addEventListener('click',function(){ S.playing=!S.playing; this.textContent=S.playing?'pause':'play'; });
+
+function closePanels() { document.querySelectorAll('.panel').forEach(p=>p.classList.remove('open')); }
+document.getElementById('sb-load').addEventListener('click',()=>{ closePanels(); document.getElementById('file-input').click(); });
+document.getElementById('btn-load').addEventListener('click',()=>document.getElementById('file-input').click());
+document.getElementById('sb-color').addEventListener('click',()=>{ const p=document.getElementById('color-panel'); const o=p.classList.contains('open'); closePanels(); if(!o)p.classList.add('open'); });
+document.getElementById('sb-camera').addEventListener('click',()=>{ const p=document.getElementById('cam-panel'); const o=p.classList.contains('open'); closePanels(); if(!o)p.classList.add('open'); });
+document.getElementById('sb-reset').addEventListener('click',()=>{
+  if(mesh3d)mesh3d.rotation.set(0,0,0); imgAngle=0;
+  S.camElev=10;S.camAzim=0;S.camDist=4;S.camFov=45;S.camOffX=0;S.camOffY=0;S.camOffZ=0;
+  document.getElementById('cam-elev').value=10; document.getElementById('cam-elev-val').textContent='10deg';
+  document.getElementById('cam-azim').value=0; document.getElementById('cam-azim-val').textContent='0deg';
+  document.getElementById('cam-dist').value=4; document.getElementById('cam-dist-val').textContent='4.0';
+  document.getElementById('cam-fov').value=45; document.getElementById('cam-fov-val').textContent='45deg';
+  document.getElementById('cam-offx').value=0; document.getElementById('cam-offx-val').textContent='0.00';
+  document.getElementById('cam-offy').value=0; document.getElementById('cam-offy-val').textContent='0.00';
+  document.getElementById('cam-offz').value=0; document.getElementById('cam-offz-val').textContent='0.00';
+  document.getElementById('zoom').value=4; document.getElementById('zoom-val').textContent='4.0';
+  updateCamera();
+});
+
+document.getElementById('file-input').addEventListener('change',e=>{ if(e.target.files[0])loadFile(e.target.files[0]); });
+const dov=document.getElementById('drag-overlay');
+wrap.addEventListener('dragover',e=>{ e.preventDefault(); dov.classList.add('show'); });
+wrap.addEventListener('dragleave',()=>dov.classList.remove('show'));
+wrap.addEventListener('drop',e=>{ e.preventDefault(); dov.classList.remove('show'); if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>
